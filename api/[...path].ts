@@ -3,28 +3,24 @@ import type { CreateRoomRequest, JoinRoomRequest, SubmitActionRequest } from "..
 
 export default async function handler(req: any, res: any): Promise<void> {
   const method = String(req.method ?? "GET").toUpperCase();
-  const url = new URL(String(req.url ?? "/api"), "http://localhost");
-  const pathname = url.pathname.replace(/\/+$/, "");
-  const path = pathname.startsWith("/api") ? pathname.slice(4) || "/" : pathname || "/";
+  const pathSegments = normalizePathSegments(req.query?.path);
 
   try {
-    if (method === "POST" && path === "/rooms") {
+    if (method === "POST" && matches(pathSegments, ["rooms"])) {
       const body = (req.body ?? {}) as Partial<CreateRoomRequest>;
       res.status(200).json(createRoom(normalizeDisplayName(body.displayName, "Player One")));
       return;
     }
 
-    const joinMatch = path.match(/^\/rooms\/([^/]+)\/join$/);
-    if (method === "POST" && joinMatch) {
-      const roomId = joinMatch[1]!;
+    if (method === "POST" && pathSegments.length === 3 && pathSegments[0] === "rooms" && pathSegments[2] === "join") {
+      const roomId = pathSegments[1]!;
       const body = (req.body ?? {}) as Partial<JoinRoomRequest>;
       res.status(200).json(joinRoom(roomId.toUpperCase(), normalizeDisplayName(body.displayName, "Player Two")));
       return;
     }
 
-    const roomMatch = path.match(/^\/rooms\/([^/]+)$/);
-    if (method === "GET" && roomMatch) {
-      const roomId = roomMatch[1]!;
+    if (method === "GET" && pathSegments.length === 2 && pathSegments[0] === "rooms") {
+      const roomId = pathSegments[1]!;
       const room = getRoom(roomId.toUpperCase());
       if (!room) {
         res.status(404).json({ error: "Unknown room." });
@@ -35,9 +31,8 @@ export default async function handler(req: any, res: any): Promise<void> {
       return;
     }
 
-    const actionMatch = path.match(/^\/rooms\/([^/]+)\/action$/);
-    if (method === "POST" && actionMatch) {
-      const roomId = actionMatch[1]!;
+    if (method === "POST" && pathSegments.length === 3 && pathSegments[0] === "rooms" && pathSegments[2] === "action") {
+      const roomId = pathSegments[1]!;
       const body = (req.body ?? {}) as Partial<SubmitActionRequest>;
       const text = body.text?.trim();
       const participantToken = body.participantToken?.trim();
@@ -55,6 +50,22 @@ export default async function handler(req: any, res: any): Promise<void> {
   } catch (error) {
     res.status(statusForError(error)).json({ error: toMessage(error, "API request failed.") });
   }
+}
+
+function normalizePathSegments(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((segment) => String(segment));
+  }
+
+  if (typeof value === "string" && value.length > 0) {
+    return [value];
+  }
+
+  return [];
+}
+
+function matches(actual: string[], expected: string[]): boolean {
+  return actual.length === expected.length && actual.every((segment, index) => segment === expected[index]);
 }
 
 function toMessage(error: unknown, fallback: string): string {
