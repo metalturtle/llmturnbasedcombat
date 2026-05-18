@@ -1,6 +1,3 @@
-import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
 import { generateImage } from "ai";
 import { createXai } from "@ai-sdk/xai";
 import type { Character, ResolvedAction } from "./combat";
@@ -11,14 +8,9 @@ type VisualProfile = {
   description: string;
 };
 
-type PortraitAsset = {
-  urlPath: string;
-  filePath: string;
-};
-
 export type SessionCharacterArt = {
-  player: CharacterArt & { portraitFilePath?: string };
-  enemy: CharacterArt & { portraitFilePath?: string };
+  player: CharacterArt;
+  enemy: CharacterArt;
 };
 
 export interface TurnIllustrator {
@@ -41,23 +33,17 @@ export class NoopTurnIllustrator implements TurnIllustrator {
 
 type XaiTurnIllustratorOptions = {
   apiKey: string;
-  rootDir: string;
-  publicBasePath?: string;
   model?: string;
   timeoutMs?: number;
 };
 
 export class XaiTurnIllustrator implements TurnIllustrator {
   private readonly xai;
-  private readonly rootDir: string;
-  private readonly publicBasePath: string;
   private readonly model: string;
   private readonly timeoutMs: number;
 
   constructor(options: XaiTurnIllustratorOptions) {
     this.xai = createXai({ apiKey: options.apiKey });
-    this.rootDir = options.rootDir;
-    this.publicBasePath = options.publicBasePath ?? "/generated";
     this.model = options.model ?? "grok-imagine-image-quality";
     this.timeoutMs = options.timeoutMs ?? 45000;
   }
@@ -66,20 +52,17 @@ export class XaiTurnIllustrator implements TurnIllustrator {
     const fallback = createFallbackCharacterArt(player, enemy);
 
     try {
-      const sessionDir = ensureSessionDir(this.rootDir, sessionId);
-      const playerArt = await this.generatePortrait(sessionId, "player", player.name, defaultVisualProfiles.player, sessionDir);
-      const enemyArt = await this.generatePortrait(sessionId, "enemy", enemy.name, defaultVisualProfiles.enemy, sessionDir);
+      const playerArt = await this.generatePortrait(sessionId, player.name, defaultVisualProfiles.player);
+      const enemyArt = await this.generatePortrait(sessionId, enemy.name, defaultVisualProfiles.enemy);
 
       return {
         player: {
           ...fallback.player,
-          portraitUrl: playerArt.urlPath,
-          portraitFilePath: playerArt.filePath,
+          portraitUrl: playerArt,
         },
         enemy: {
           ...fallback.enemy,
-          portraitUrl: enemyArt.urlPath,
-          portraitFilePath: enemyArt.filePath,
+          portraitUrl: enemyArt,
         },
       };
     } catch (error) {
@@ -89,8 +72,6 @@ export class XaiTurnIllustrator implements TurnIllustrator {
   }
 
   async illustrateTurn(sessionId: string, art: SessionCharacterArt, result: ResolvedAction): Promise<TurnIllustration> {
-    const sessionDir = ensureSessionDir(this.rootDir, sessionId);
-
     try {
       const prompt = await buildTurnScenePrompt(art, result);
       const generated = await generateImage({
@@ -100,7 +81,10 @@ export class XaiTurnIllustrator implements TurnIllustrator {
         abortSignal: AbortSignal.timeout(this.timeoutMs),
       });
 
-      return saveGeneratedFile(sessionDir, this.publicBasePath, sessionId, generated.image, `${String(result.actor.id)}-turn`);
+      return {
+        status: "ready",
+        sceneUrl: toDataUrl(generated.image.base64, generated.image.mediaType),
+      };
     } catch (error) {
       console.error("Turn illustration failed.", error);
       return {
@@ -110,13 +94,7 @@ export class XaiTurnIllustrator implements TurnIllustrator {
     }
   }
 
-  private async generatePortrait(
-    sessionId: string,
-    slug: "player" | "enemy",
-    name: string,
-    profile: VisualProfile,
-    sessionDir: string,
-  ): Promise<PortraitAsset> {
+  private async generatePortrait(sessionId: string, name: string, profile: VisualProfile): Promise<string> {
     const generated = await generateImage({
       model: this.xai.image(this.model),
       prompt: buildPortraitPrompt(name, profile),
@@ -124,15 +102,7 @@ export class XaiTurnIllustrator implements TurnIllustrator {
       abortSignal: AbortSignal.timeout(this.timeoutMs),
     });
 
-    const saved = saveGeneratedFile(sessionDir, this.publicBasePath, sessionId, generated.image, `${slug}-portrait`);
-    if (saved.status !== "ready" || !saved.sceneUrl) {
-      throw new Error(`Portrait generation failed for ${name}.`);
-    }
-
-    return {
-      filePath: path.join(sessionDir, path.basename(saved.sceneUrl)),
-      urlPath: saved.sceneUrl,
-    };
+    return toDataUrl(generated.image.base64, generated.image.mediaType);
   }
 }
 
@@ -185,57 +155,16 @@ async function buildTurnScenePrompt(art: SessionCharacterArt, result: ResolvedAc
     "No text, captions, HUD, or extra characters.",
   ].join(" ");
 
-  if (!art.player.portraitFilePath || !art.enemy.portraitFilePath) {
+  if (!art.player.portraitUrl || !art.enemy.portraitUrl) {
     return text;
   }
 
   return {
     text,
-    images: await Promise.all([toDataUrl(art.player.portraitFilePath), toDataUrl(art.enemy.portraitFilePath)]),
+    images: [art.player.portraitUrl, art.enemy.portraitUrl],
   };
 }
 
-function ensureSessionDir(rootDir: string, sessionId: string): string {
-  const sessionDir = path.join(rootDir, sessionId);
-  fs.mkdirSync(sessionDir, { recursive: true });
-  return sessionDir;
-}
-
-function saveGeneratedFile(
-  sessionDir: string,
-  publicBasePath: string,
-  sessionId: string,
-  generated: { base64: string; mediaType: string },
-  prefix: string,
-): TurnIllustration {
-  const extension = mediaTypeToExtension(generated.mediaType);
-  const filename = `${prefix}-${crypto.randomUUID()}.${extension}`;
-  const filePath = path.join(sessionDir, filename);
-  fs.writeFileSync(filePath, Buffer.from(generated.base64, "base64"));
-
-  return {
-    status: "ready",
-    sceneUrl: `${publicBasePath}/${sessionId}/${filename}`,
-  };
-}
-
-function mediaTypeToExtension(mediaType: string): string {
-  if (mediaType === "image/png") {
-    return "png";
-  }
-
-  if (mediaType === "image/webp") {
-    return "webp";
-  }
-
-  if (mediaType === "image/jpeg") {
-    return "jpg";
-  }
-
-  return "png";
-}
-
-async function toDataUrl(filePath: string): Promise<string> {
-  const buffer = fs.readFileSync(filePath);
-  return `data:image/png;base64,${buffer.toString("base64")}`;
+function toDataUrl(base64: string, mediaType: string): string {
+  return `data:${mediaType};base64,${base64}`;
 }
