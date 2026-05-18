@@ -8,14 +8,14 @@ export default async function handler(req: any, res: any): Promise<void> {
   try {
     if (method === "POST" && matches(pathSegments, ["rooms"])) {
       const body = (req.body ?? {}) as Partial<CreateRoomRequest>;
-      res.status(200).json(roomService.createRoom(roomService.normalizeDisplayName(body.displayName, "Player One")));
+      res.status(200).json(roomService.createRoom(body));
       return;
     }
 
     if (method === "POST" && pathSegments.length === 3 && pathSegments[0] === "rooms" && pathSegments[2] === "join") {
       const roomId = pathSegments[1]!;
       const body = (req.body ?? {}) as Partial<JoinRoomRequest>;
-      res.status(200).json(roomService.joinRoom(roomId.toUpperCase(), roomService.normalizeDisplayName(body.displayName, "Player Two")));
+      res.status(200).json(roomService.joinRoom(roomId.toUpperCase(), body));
       return;
     }
 

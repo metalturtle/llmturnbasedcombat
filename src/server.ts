@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import type { ViteDevServer } from "vite";
-import { createRoom, getRoom, joinRoom, normalizeDisplayName, submitRoomAction } from "./room-service";
+import { createRoom, getRoom, joinRoom, submitRoomAction } from "./room-service";
 import type { CreateRoomRequest, JoinRoomRequest, SubmitActionRequest } from "./api";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -16,7 +16,7 @@ app.use(express.json({ limit: "25mb" }));
 app.post("/api/rooms", (req, res) => {
   try {
     const body = req.body as Partial<CreateRoomRequest>;
-    res.json(createRoom(normalizeDisplayName(body.displayName, "Player One")));
+    res.json(createRoom(body));
   } catch (error) {
     res.status(500).json({ error: toMessage(error, "Could not create room.") });
   }
@@ -25,7 +25,7 @@ app.post("/api/rooms", (req, res) => {
 app.post("/api/rooms/:roomId/join", (req, res) => {
   try {
     const body = req.body as Partial<JoinRoomRequest>;
-    res.json(joinRoom(req.params.roomId.toUpperCase(), normalizeDisplayName(body.displayName, "Player Two")));
+    res.json(joinRoom(req.params.roomId.toUpperCase(), body));
   } catch (error) {
     res.status(statusForError(error)).json({ error: toMessage(error, "Could not join room.") });
   }

@@ -34,6 +34,7 @@ export type RoomStatus = "waiting" | "active" | "finished";
 export type RoomSeatState = {
   seat: Team;
   displayName: string;
+  characterName: string;
   joined: boolean;
 };
 
@@ -58,6 +59,13 @@ export type RoomConnection = {
   participantToken: string;
   seat: Team;
   displayName: string;
+  characterName: string;
+};
+
+export type CharacterSetupRequest = {
+  displayName?: string;
+  characterName?: string;
+  characterDescription?: string;
 };
 
 export type RoomJoinResponse = {
@@ -65,13 +73,9 @@ export type RoomJoinResponse = {
   connection: RoomConnection;
 };
 
-export type CreateRoomRequest = {
-  displayName?: string;
-};
+export type CreateRoomRequest = CharacterSetupRequest;
 
-export type JoinRoomRequest = {
-  displayName?: string;
-};
+export type JoinRoomRequest = CharacterSetupRequest;
 
 export type SubmitActionRequest = {
   text: string;

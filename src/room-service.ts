@@ -10,6 +10,7 @@ import {
 } from "./turn-illustrator";
 import type {
   BattleLogEntry,
+  CharacterSetupRequest,
   CombatRoomView,
   RoomJoinResponse,
   RoomSeatState,
@@ -20,6 +21,7 @@ import type {
 type RoomSeat = {
   seat: Team;
   displayName: string;
+  characterName: string;
   participantToken: string;
 };
 
@@ -39,31 +41,35 @@ const rooms = new Map<string, CombatRoom>();
 const dungeonMaster = createDungeonMaster();
 const turnIllustrator = createTurnIllustrator();
 
-export function createRoom(displayName: string): RoomJoinResponse {
+export function createRoom(input: CharacterSetupRequest): RoomJoinResponse {
+  const setup = normalizeCharacterSetup(input, "Player One", "player");
   const roomId = createRoomId();
   const participantToken = crypto.randomUUID();
   const game = new CombatGame(undefined, dungeonMaster);
-  game.renameCombatant("player", displayName);
-  game.renameCombatant("enemy", "Waiting Challenger");
+  game.renameCombatant("player", setup.characterName);
+  game.renameCombatant("enemy", "Open Seat");
 
   const room: CombatRoom = {
     roomId,
     status: "waiting",
     game,
     log: [],
-    characterArt: createFallbackCharacterArt(game.getSnapshot().player, game.getSnapshot().enemy),
+    characterArt: createFallbackCharacterArt(
+      { name: setup.characterName, description: setup.characterDescription },
+      { name: "Open Seat", description: "Waiting for another player to join and define their fighter." },
+    ),
     seats: {
-      player: { seat: "player", displayName, participantToken },
+      player: { seat: "player", displayName: setup.displayName, characterName: setup.characterName, participantToken },
       enemy: null,
     },
   };
 
   rooms.set(roomId, room);
-  void hydrateCharacterArt(roomId, room.game.getSnapshot().player, room.game.getSnapshot().enemy);
+  void hydrateSeatPortrait(roomId, "player");
   return toJoinResponse(room, room.seats.player);
 }
 
-export function joinRoom(roomId: string, displayName: string): RoomJoinResponse {
+export function joinRoom(roomId: string, input: CharacterSetupRequest): RoomJoinResponse {
   const room = rooms.get(roomId);
   if (!room) {
     throw new Error("Unknown room.");
@@ -73,12 +79,22 @@ export function joinRoom(roomId: string, displayName: string): RoomJoinResponse 
     throw new Error("Room already has two players.");
   }
 
+  const setup = normalizeCharacterSetup(input, "Player Two", "enemy");
   const participantToken = crypto.randomUUID();
-  const enemySeat: RoomSeat = { seat: "enemy", displayName, participantToken };
+  const enemySeat: RoomSeat = {
+    seat: "enemy",
+    displayName: setup.displayName,
+    characterName: setup.characterName,
+    participantToken,
+  };
   room.seats.enemy = enemySeat;
   room.status = room.game.getSnapshot().finished ? "finished" : "active";
-  room.game.renameCombatant("enemy", displayName);
-  room.characterArt.enemy.name = displayName;
+  room.game.renameCombatant("enemy", setup.characterName);
+  room.characterArt.enemy = {
+    name: setup.characterName,
+    description: setup.characterDescription,
+  };
+  void hydrateSeatPortrait(roomId, "enemy");
 
   return toJoinResponse(room, enemySeat);
 }
@@ -162,6 +178,7 @@ function toJoinResponse(room: CombatRoom, seat: RoomSeat | null): RoomJoinRespon
       participantToken: seat.participantToken,
       seat: seat.seat,
       displayName: seat.displayName,
+      characterName: seat.characterName,
     },
   };
 }
@@ -197,6 +214,7 @@ function toSeatState(seat: Team, occupant: RoomSeat | null): RoomSeatState {
   return {
     seat,
     displayName: occupant?.displayName ?? (seat === "player" ? "Player One" : "Waiting Challenger"),
+    characterName: occupant?.characterName ?? (seat === "player" ? "Player" : "Open Seat"),
     joined: occupant !== null,
   };
 }
@@ -235,12 +253,20 @@ function createRoomId(): string {
   return roomId;
 }
 
-async function hydrateCharacterArt(roomId: string, player: CombatRoomView["snapshot"]["player"], enemy: CombatRoomView["snapshot"]["enemy"]): Promise<void> {
-  const art = await turnIllustrator.createCharacterArt(roomId, player, enemy);
+async function hydrateSeatPortrait(roomId: string, seat: "player" | "enemy"): Promise<void> {
   const room = rooms.get(roomId);
-  if (room) {
-    room.characterArt = art;
+  if (!room) {
+    return;
   }
+
+  const sourceArt = room.characterArt[seat];
+  const hydrated = await turnIllustrator.hydratePortrait(roomId, seat, sourceArt);
+  const liveRoom = rooms.get(roomId);
+  if (!liveRoom) {
+    return;
+  }
+
+  liveRoom.characterArt[seat] = hydrated;
 }
 
 async function hydrateTurnIllustration(
@@ -281,4 +307,37 @@ function createTurnIllustrator(): TurnIllustrator {
   const timeoutValue = Number(process.env.XAI_IMAGE_TIMEOUT_MS ?? 45000);
   const timeoutMs = Number.isFinite(timeoutValue) && timeoutValue > 0 ? timeoutValue : 45000;
   return new XaiTurnIllustrator(model ? { apiKey, model, timeoutMs } : { apiKey, timeoutMs });
+}
+
+function normalizeCharacterSetup(
+  input: CharacterSetupRequest,
+  fallbackDisplayName: string,
+  seat: Team,
+): { displayName: string; characterName: string; characterDescription: string } {
+  const displayName = normalizeDisplayName(input.displayName, fallbackDisplayName);
+  const characterName = normalizeCharacterName(input.characterName, displayName, seat);
+  const characterDescription = normalizeCharacterDescription(input.characterDescription, characterName, seat);
+  return { displayName, characterName, characterDescription };
+}
+
+function normalizeCharacterName(value: string | undefined, fallback: string, seat: Team): string {
+  const trimmed = value?.trim();
+  if (trimmed && trimmed.length > 0) {
+    return trimmed.slice(0, 32);
+  }
+
+  return seat === "player" ? fallback : `${fallback} Fighter`;
+}
+
+function normalizeCharacterDescription(value: string | undefined, characterName: string, seat: Team): string {
+  const trimmed = value?.trim();
+  if (trimmed && trimmed.length > 0) {
+    return trimmed.slice(0, 320);
+  }
+
+  if (seat === "player") {
+    return `${characterName} is a scrappy martial artist with a distinctive silhouette, expressive face, and tournament-ready outfit.`;
+  }
+
+  return `${characterName} is a dramatic challenger with strong visual identity, readable costume shapes, and a confident duelist presence.`;
 }

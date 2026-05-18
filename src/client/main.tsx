@@ -13,6 +13,8 @@ function App(): React.ReactElement {
   const [connection, setConnection] = useState<RoomConnection | null>(null);
   const [action, setAction] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [characterName, setCharacterName] = useState("");
+  const [characterDescription, setCharacterDescription] = useState("");
   const [joinRoomId, setJoinRoomId] = useState("");
   const [loadState, setLoadState] = useState<LoadState>("lobby");
   const [submitting, setSubmitting] = useState(false);
@@ -59,7 +61,7 @@ function App(): React.ReactElement {
       const response = await fetch("/api/rooms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName }),
+        body: JSON.stringify({ displayName, characterName, characterDescription }),
       });
       const payload = await readJson<RoomJoinResponse>(response);
       writeStoredConnection(payload.connection);
@@ -88,7 +90,7 @@ function App(): React.ReactElement {
       const response = await fetch(`/api/rooms/${roomId}/join`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ displayName }),
+        body: JSON.stringify({ displayName, characterName, characterDescription }),
       });
       const payload = await readJson<RoomJoinResponse>(response);
       writeStoredConnection(payload.connection);
@@ -170,8 +172,21 @@ function App(): React.ReactElement {
             <input
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Your fighter name"
+              placeholder="Your player label"
               aria-label="Display name"
+            />
+            <input
+              value={characterName}
+              onChange={(event) => setCharacterName(event.target.value)}
+              placeholder="Fighter name"
+              aria-label="Character name"
+            />
+            <textarea
+              value={characterDescription}
+              onChange={(event) => setCharacterDescription(event.target.value)}
+              placeholder="Describe the fighter's appearance, outfit, build, vibe, and standout visual traits."
+              aria-label="Character description"
+              rows={5}
             />
           </article>
 
@@ -205,7 +220,9 @@ function App(): React.ReactElement {
         <div>
           <p className="eyebrow">Dungeon Master</p>
           <h1>Turn Combat</h1>
-          <small className="room-code">Room {room.roomId} | You are {connection.displayName}</small>
+          <small className="room-code">
+            Room {room.roomId} | You are {connection.characterName} ({connection.displayName})
+          </small>
         </div>
         <div className="dm-panel">
           <span>{room.dungeonMaster.name}</span>
@@ -227,8 +244,8 @@ function App(): React.ReactElement {
             <strong>{room.status === "waiting" ? "Waiting" : room.snapshot.finished ? "Finished" : room.snapshot.activeTurn}</strong>
           </div>
           <div className="seat-status">
-            <small>Player seat: {room.seats.player.displayName}</small>
-            <small>Enemy seat: {room.seats.enemy.joined ? room.seats.enemy.displayName : "Open"}</small>
+            <small>Player seat: {room.seats.player.displayName} as {room.seats.player.characterName}</small>
+            <small>Enemy seat: {room.seats.enemy.joined ? `${room.seats.enemy.displayName} as ${room.seats.enemy.characterName}` : "Open"}</small>
           </div>
           {room.status === "waiting" ? (
             <div className="empty-log">Waiting for another player to join room {room.roomId}.</div>
@@ -408,7 +425,18 @@ function readStoredConnection(roomId: string): StoredConnection | null {
   }
 
   try {
-    return JSON.parse(raw) as StoredConnection;
+    const parsed = JSON.parse(raw) as Partial<StoredConnection>;
+    if (!parsed || typeof parsed.roomId !== "string" || typeof parsed.participantToken !== "string" || typeof parsed.seat !== "string") {
+      return null;
+    }
+
+    return {
+      roomId: parsed.roomId,
+      participantToken: parsed.participantToken,
+      seat: parsed.seat,
+      displayName: typeof parsed.displayName === "string" ? parsed.displayName : "Player",
+      characterName: typeof parsed.characterName === "string" ? parsed.characterName : typeof parsed.displayName === "string" ? parsed.displayName : "Player",
+    };
   } catch {
     return null;
   }

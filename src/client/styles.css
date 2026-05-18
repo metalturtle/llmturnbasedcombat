@@ -22,8 +22,24 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
+}
+
+input,
+textarea {
+  width: 100%;
+  border: 1px solid #2f3941;
+  border-radius: 6px;
+  background: #151a1f;
+  color: #e8edf2;
+  padding: 12px 14px;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 120px;
 }
 
 button {
