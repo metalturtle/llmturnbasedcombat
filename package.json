@@ -1,0 +1,38 @@
+{
+  "name": "turnbasedcombat",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/server.ts",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "npm run typecheck && vite build",
+    "start": "NODE_ENV=production tsx src/server.ts",
+    "cli": "tsx src/demo.ts",
+    "demo": "npm run cli",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx src/smoke-test.ts && npm run typecheck"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.8.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "tsx": "^4.22.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.13"
+  },
+  "dependencies": {
+    "@ai-sdk/xai": "^3.0.91",
+    "ai": "^6.0.184",
+    "express": "^5.2.1",
+    "openai": "^6.38.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "zod": "^4.4.3"
+  }
+}
