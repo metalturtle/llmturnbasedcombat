@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: llm-turnbased-combat
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 22

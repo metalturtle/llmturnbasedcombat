@@ -1,27 +1,27 @@
-import { createRoom, getRoom, joinRoom, normalizeDisplayName, submitRoomAction } from "../src/room-service";
 import type { CreateRoomRequest, JoinRoomRequest, SubmitActionRequest } from "../src/api";
 
 export default async function handler(req: any, res: any): Promise<void> {
   const method = String(req.method ?? "GET").toUpperCase();
   const pathSegments = normalizePathSegments(req.query?.path);
+  const roomService = await import("../src/room-service");
 
   try {
     if (method === "POST" && matches(pathSegments, ["rooms"])) {
       const body = (req.body ?? {}) as Partial<CreateRoomRequest>;
-      res.status(200).json(createRoom(normalizeDisplayName(body.displayName, "Player One")));
+      res.status(200).json(roomService.createRoom(roomService.normalizeDisplayName(body.displayName, "Player One")));
       return;
     }
 
     if (method === "POST" && pathSegments.length === 3 && pathSegments[0] === "rooms" && pathSegments[2] === "join") {
       const roomId = pathSegments[1]!;
       const body = (req.body ?? {}) as Partial<JoinRoomRequest>;
-      res.status(200).json(joinRoom(roomId.toUpperCase(), normalizeDisplayName(body.displayName, "Player Two")));
+      res.status(200).json(roomService.joinRoom(roomId.toUpperCase(), roomService.normalizeDisplayName(body.displayName, "Player Two")));
       return;
     }
 
     if (method === "GET" && pathSegments.length === 2 && pathSegments[0] === "rooms") {
       const roomId = pathSegments[1]!;
-      const room = getRoom(roomId.toUpperCase());
+      const room = roomService.getRoom(roomId.toUpperCase());
       if (!room) {
         res.status(404).json({ error: "Unknown room." });
         return;
@@ -42,7 +42,7 @@ export default async function handler(req: any, res: any): Promise<void> {
         return;
       }
 
-      res.status(200).json(await submitRoomAction(roomId.toUpperCase(), participantToken, text));
+      res.status(200).json(await roomService.submitRoomAction(roomId.toUpperCase(), participantToken, text));
       return;
     }
 

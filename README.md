@@ -56,3 +56,31 @@ npm run dev
 ```
 
 The combat rules remain authoritative in `src/combat.ts`. The model only narrates the already-resolved turn.
+
+## Render Deploy
+
+This repo is a better fit for Render than Vercel because the room demo keeps state in memory.
+
+You can deploy it on Render as a free Web Service using the included `render.yaml`, or create the service manually with:
+
+```bash
+Build Command: npm install && npm run build
+Start Command: npm run start
+```
+
+Set these environment variables in Render:
+
+```bash
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-5.4-mini
+XAI_API_KEY=...
+XAI_IMAGE_MODEL=grok-imagine-image-quality
+XAI_IMAGE_TIMEOUT_MS=45000
+NODE_ENV=production
+```
+
+Notes for the free demo deployment:
+
+- room state is in memory only
+- rooms disappear if the service restarts or spins down
+- Render free services spin down after inactivity and cold start on the next request
